@@ -17,6 +17,13 @@ __/\\\\\\\\\\\\\\\__/\\\\\\\\\\\__/\\\\\\\\\\\\\\\__/\\\\\\\\\\\\\\\__/\\\______
  * @title DistributeTokens
  * @notice This is a Token Distribution Contract
  * 
+ * ===== SOCIAL NETWORKS =====
+ * 
+ * https://t.me/HelloTittyOG
+ * https://x.com/hellotittyog
+ * https://github.com/hellotitty-team
+ * https://app.uniswap.org/#/swap?outputCurrency=0x5B34B5032267e5D5a80b99a06B4b85716f404EA2
+ * 
  * ===== OVERVIEW FOR NON-TECHNICAL READERS =====
  * 
  * What this contract does:
