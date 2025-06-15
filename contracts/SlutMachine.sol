@@ -6,12 +6,13 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
 
 /**
  * @title SlutMachine
  * @dev A simple 3x3 slot machine contract that works with ERC20 tokens
  */
-contract SlutMachine is Ownable, ReentrancyGuard {
+contract SlutMachine is Ownable, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 
     // Constants
@@ -73,6 +74,8 @@ contract SlutMachine is Ownable, ReentrancyGuard {
     event Withdrawal(address indexed owner, uint256 amount);
     event TokenChanged(address oldToken, address newToken);
     event MaxHistoryUpdated(uint256 oldValue, uint256 newValue);
+    event GamePaused(address owner);
+    event GameUnpaused(address owner);
 
     // Custom errors
     error InvalidBetAmount(uint256 provided, uint256 min, uint256 max);
@@ -154,7 +157,7 @@ contract SlutMachine is Ownable, ReentrancyGuard {
      * @param betAmount The amount to bet
      * @param userSeed Additional random seed provided by user
      */
-    function spin(uint256 betAmount, string calldata userSeed) external nonReentrant {
+    function spin(uint256 betAmount, string calldata userSeed) external nonReentrant whenNotPaused {
         // Check if bet amount is valid
         if (betAmount < minBet || betAmount > maxBet) {
             revert InvalidBetAmount(betAmount, minBet, maxBet);
@@ -585,5 +588,21 @@ contract SlutMachine is Ownable, ReentrancyGuard {
             totalBetAmount,
             totalWinAmount
         );
+    }
+
+    /**
+     * @dev Pause the game (only owner)
+     */
+    function pause() external onlyOwner {
+        _pause();
+        emit GamePaused(msg.sender);
+    }
+    
+    /**
+     * @dev Unpause the game (only owner)
+     */
+    function unpause() external onlyOwner {
+        _unpause();
+        emit GameUnpaused(msg.sender);
     }
 }
