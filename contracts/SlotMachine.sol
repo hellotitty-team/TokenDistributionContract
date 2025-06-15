@@ -4,16 +4,23 @@ pragma solidity 0.8.28;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * @title SlotMachine
- * @dev A simple 3x3 slot machine contract with block-based randomness
+ * @dev A simple 3x3 slot machine contract that works with ERC20 tokens
  */
 contract SlotMachine is Ownable, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
     // Constants
     uint8 public constant REELS = 3;
     uint8 public constant ROWS = 3;
     uint8 public constant NUM_SYMBOLS = 6;
+
+    // Token used for betting
+    IERC20 public gameToken;
 
     // Game state
     uint256 public minBet;
@@ -40,7 +47,7 @@ contract SlotMachine is Ownable, ReentrancyGuard {
     mapping(address => uint256) public playerNonce;
 
     // Events
-    event SlotMachineDeployed(address owner, uint256 minBet, uint256 maxBet, uint256 houseEdgePercent);
+    event SlotMachineDeployed(address owner, address token, uint256 minBet, uint256 maxBet, uint256 houseEdgePercent);
     event ConfigUpdated(uint256 minBet, uint256 maxBet, uint256 houseEdgePercent);
     event SymbolsConfigured(uint8 symbolId, string name, uint16 weight, uint16 payout);
     event Spin(
@@ -51,6 +58,7 @@ contract SlotMachine is Ownable, ReentrancyGuard {
         string userSeed
     );
     event Withdrawal(address indexed owner, uint256 amount);
+    event TokenChanged(address oldToken, address newToken);
 
     // Custom errors
     error InvalidBetAmount(uint256 provided, uint256 min, uint256 max);
@@ -60,22 +68,27 @@ contract SlotMachine is Ownable, ReentrancyGuard {
     error ZeroAddressNotAllowed();
     error InvalidPercentage(uint256 provided, uint256 max);
     error ZeroValueNotAllowed();
+    error InsufficientAllowance(uint256 required, uint256 provided);
 
     /**
      * @dev Constructor
+     * @param tokenAddress Address of the ERC20 token used for betting
      * @param initialMinBet Minimum bet amount
      * @param initialMaxBet Maximum bet amount
      * @param initialHouseEdgePercent House edge percentage (in basis points, 100 = 1%)
      */
     constructor(
+        address tokenAddress,
         uint256 initialMinBet,
         uint256 initialMaxBet,
         uint256 initialHouseEdgePercent
     ) Ownable(msg.sender) {
+        if (tokenAddress == address(0)) revert ZeroAddressNotAllowed();
         if (initialMinBet == 0) revert ZeroValueNotAllowed();
         if (initialMaxBet < initialMinBet) revert InvalidBetAmount(initialMaxBet, initialMinBet, type(uint256).max);
         if (initialHouseEdgePercent > 5000) revert InvalidPercentage(initialHouseEdgePercent, 5000); // Max 50%
 
+        gameToken = IERC20(tokenAddress);
         minBet = initialMinBet;
         maxBet = initialMaxBet;
         houseEdgePercent = initialHouseEdgePercent;
@@ -83,7 +96,7 @@ contract SlotMachine is Ownable, ReentrancyGuard {
         // Set default symbol configuration
         _configureDefaultSymbols();
         
-        emit SlotMachineDeployed(msg.sender, minBet, maxBet, houseEdgePercent);
+        emit SlotMachineDeployed(msg.sender, tokenAddress, minBet, maxBet, houseEdgePercent);
     }
 
     /**
@@ -122,18 +135,26 @@ contract SlotMachine is Ownable, ReentrancyGuard {
 
     /**
      * @dev Function to play the slot machine
+     * @param betAmount The amount to bet
      * @param userSeed Additional random seed provided by user
      */
-    function spin(string calldata userSeed) external payable nonReentrant {
+    function spin(uint256 betAmount, string calldata userSeed) external nonReentrant {
         // Check if bet amount is valid
-        if (msg.value < minBet || msg.value > maxBet) {
-            revert InvalidBetAmount(msg.value, minBet, maxBet);
+        if (betAmount < minBet || betAmount > maxBet) {
+            revert InvalidBetAmount(betAmount, minBet, maxBet);
         }
         
         // Check if user seed is provided
         if (bytes(userSeed).length == 0) {
             revert EmptySeedNotAllowed();
         }
+        
+        // Transfer tokens from player to contract
+        uint256 allowance = gameToken.allowance(msg.sender, address(this));
+        if (allowance < betAmount) {
+            revert InsufficientAllowance(betAmount, allowance);
+        }
+        gameToken.safeTransferFrom(msg.sender, address(this), betAmount);
         
         // Update player's nonce
         playerNonce[msg.sender]++;
@@ -143,7 +164,7 @@ contract SlotMachine is Ownable, ReentrancyGuard {
         
         // Calculate winnings
         uint256 winMultiplier = calculateWinMultiplier(result);
-        uint256 winAmount = (msg.value * winMultiplier) / 10000;
+        uint256 winAmount = (betAmount * winMultiplier) / 10000;
         
         // Apply house edge if player won
         if (winAmount > 0) {
@@ -152,26 +173,26 @@ contract SlotMachine is Ownable, ReentrancyGuard {
         
         // Update statistics
         totalSpins++;
-        totalBetAmount += msg.value;
+        totalBetAmount += betAmount;
         playerSpins[msg.sender]++;
-        playerBetAmount[msg.sender] += msg.value;
+        playerBetAmount[msg.sender] += betAmount;
         
         if (winAmount > 0) {
             totalWinAmount += winAmount;
             playerWinAmount[msg.sender] += winAmount;
             
             // Check contract balance
-            if (winAmount > address(this).balance) {
-                revert InsufficientContractBalance(winAmount, address(this).balance);
+            uint256 contractBalance = gameToken.balanceOf(address(this));
+            if (winAmount > contractBalance) {
+                revert InsufficientContractBalance(winAmount, contractBalance);
             }
             
             // Send winnings to player
-            (bool sent, ) = payable(msg.sender).call{value: winAmount}("");
-            require(sent, "Failed to send winnings");
+            gameToken.safeTransfer(msg.sender, winAmount);
         }
         
         // Emit event
-        emit Spin(msg.sender, msg.value, winAmount, result, userSeed);
+        emit Spin(msg.sender, betAmount, winAmount, result, userSeed);
     }
 
     /**
@@ -316,35 +337,48 @@ contract SlotMachine is Ownable, ReentrancyGuard {
     }
     
     /**
-     * @dev Withdraw funds from the contract (owner only)
+     * @dev Update the token used for the game
+     * @param newTokenAddress The address of the new token
+     */
+    function updateGameToken(address newTokenAddress) external onlyOwner {
+        if (newTokenAddress == address(0)) revert ZeroAddressNotAllowed();
+        
+        address oldToken = address(gameToken);
+        gameToken = IERC20(newTokenAddress);
+        
+        emit TokenChanged(oldToken, newTokenAddress);
+    }
+    
+    /**
+     * @dev Withdraw tokens from the contract (owner only)
      * @param amount The amount to withdraw (0 for all)
      */
     function withdraw(uint256 amount) external onlyOwner {
         uint256 withdrawAmount = amount;
+        uint256 contractBalance = gameToken.balanceOf(address(this));
         
         // If amount is 0, withdraw all
         if (withdrawAmount == 0) {
-            withdrawAmount = address(this).balance;
+            withdrawAmount = contractBalance;
         }
         
         // Check contract balance
-        if (withdrawAmount > address(this).balance) {
-            revert InsufficientContractBalance(withdrawAmount, address(this).balance);
+        if (withdrawAmount > contractBalance) {
+            revert InsufficientContractBalance(withdrawAmount, contractBalance);
         }
         
-        // Send funds to owner
-        (bool sent, ) = payable(owner()).call{value: withdrawAmount}("");
-        require(sent, "Failed to send funds");
+        // Send tokens to owner
+        gameToken.safeTransfer(owner(), withdrawAmount);
         
         emit Withdrawal(owner(), withdrawAmount);
     }
     
     /**
-     * @dev Get contract balance
-     * @return The contract balance
+     * @dev Get contract token balance
+     * @return The contract token balance
      */
     function getContractBalance() external view returns (uint256) {
-        return address(this).balance;
+        return gameToken.balanceOf(address(this));
     }
     
     /**
@@ -368,22 +402,25 @@ contract SlotMachine is Ownable, ReentrancyGuard {
     
     /**
      * @dev Get game configuration
+     * @return token Token address
      * @return minBetAmount Minimum bet amount
      * @return maxBetAmount Maximum bet amount
      * @return edge House edge percentage (basis points)
-     * @return balance Contract balance
+     * @return balance Contract token balance
      */
     function getGameConfig() external view returns (
+        address token,
         uint256 minBetAmount,
         uint256 maxBetAmount,
         uint256 edge,
         uint256 balance
     ) {
         return (
+            address(gameToken),
             minBet,
             maxBet,
             houseEdgePercent,
-            address(this).balance
+            gameToken.balanceOf(address(this))
         );
     }
     
@@ -404,9 +441,4 @@ contract SlotMachine is Ownable, ReentrancyGuard {
             totalWinAmount
         );
     }
-    
-    /**
-     * @dev To receive ETH from players
-     */
-    receive() external payable {}
 }
