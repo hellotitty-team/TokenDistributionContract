@@ -18,6 +18,15 @@ contract SlotMachine is Ownable, ReentrancyGuard {
     uint8 public constant REELS = 3;
     uint8 public constant ROWS = 3;
     uint8 public constant NUM_SYMBOLS = 6;
+    
+    // Struct to store spin result details
+    struct SpinResult {
+        uint256 timestamp;
+        uint256 betAmount;
+        uint256 winAmount;
+        uint8[REELS][ROWS] symbols;
+        string userSeed;
+    }
 
     // Token used for betting
     IERC20 public gameToken;
@@ -43,6 +52,10 @@ contract SlotMachine is Ownable, ReentrancyGuard {
     mapping(address => uint256) public playerWinAmount;
     mapping(address => uint256) public playerBetAmount;
     
+    // Player spin history
+    mapping(address => SpinResult[]) private playerSpinHistory;
+    uint256 public maxHistoryPerPlayer; // Maximum number of spin results to store per player (0 = unlimited)
+    
     // For hybrid randomness
     mapping(address => uint256) public playerNonce;
 
@@ -59,6 +72,7 @@ contract SlotMachine is Ownable, ReentrancyGuard {
     );
     event Withdrawal(address indexed owner, uint256 amount);
     event TokenChanged(address oldToken, address newToken);
+    event MaxHistoryUpdated(uint256 oldValue, uint256 newValue);
 
     // Custom errors
     error InvalidBetAmount(uint256 provided, uint256 min, uint256 max);
@@ -69,6 +83,7 @@ contract SlotMachine is Ownable, ReentrancyGuard {
     error InvalidPercentage(uint256 provided, uint256 max);
     error ZeroValueNotAllowed();
     error InsufficientAllowance(uint256 required, uint256 provided);
+    error InvalidIndex(uint256 provided, uint256 max);
 
     /**
      * @dev Constructor
@@ -92,6 +107,7 @@ contract SlotMachine is Ownable, ReentrancyGuard {
         minBet = initialMinBet;
         maxBet = initialMaxBet;
         houseEdgePercent = initialHouseEdgePercent;
+        maxHistoryPerPlayer = 0;
         
         // Set default symbol configuration
         _configureDefaultSymbols();
@@ -191,8 +207,137 @@ contract SlotMachine is Ownable, ReentrancyGuard {
             gameToken.safeTransfer(msg.sender, winAmount);
         }
         
+        // Store spin result in player history
+        _storeSpinResult(msg.sender, betAmount, winAmount, result, userSeed);
+        
         // Emit event
         emit Spin(msg.sender, betAmount, winAmount, result, userSeed);
+    }
+    
+    /**
+     * @dev Internal function to store a spin result
+     * @param player The player address
+     * @param betAmount The bet amount
+     * @param winAmount The win amount
+     * @param result The spin result symbols
+     * @param userSeed The user seed
+     */
+    function _storeSpinResult(
+        address player,
+        uint256 betAmount,
+        uint256 winAmount,
+        uint8[REELS][ROWS] memory result,
+        string calldata userSeed
+    ) internal {
+        // Create new spin result
+        SpinResult memory newResult = SpinResult({
+            timestamp: block.timestamp,
+            betAmount: betAmount,
+            winAmount: winAmount,
+            symbols: result,
+            userSeed: userSeed
+        });
+        
+        // If there's a maximum history limit and we've reached it, remove oldest entry
+        if (maxHistoryPerPlayer > 0 && playerSpinHistory[player].length >= maxHistoryPerPlayer) {
+            // Remove the oldest spin result (shift array left)
+            uint256 historyLength = playerSpinHistory[player].length;
+            for (uint256 i = 0; i < historyLength - 1; i++) {
+                playerSpinHistory[player][i] = playerSpinHistory[player][i + 1];
+            }
+            playerSpinHistory[player].pop(); // Remove last element after shifting
+        }
+        
+        // Add new result to history
+        playerSpinHistory[player].push(newResult);
+    }
+    
+    /**
+     * @dev Get the count of stored spin results for a player
+     * @param player The player address
+     * @return The number of stored spin results
+     */
+    function getPlayerSpinHistoryLength(address player) external view returns (uint256) {
+        return playerSpinHistory[player].length;
+    }
+    
+    /**
+     * @dev Get a specific spin result for a player
+     * @param player The player address
+     * @param index The index of the spin result
+     * @return timestamp The timestamp of the spin
+     * @return betAmount The bet amount
+     * @return winAmount The win amount
+     * @return symbols The spin result symbols
+     * @return userSeed The user seed
+     */
+    function getPlayerSpinResult(address player, uint256 index) external view returns (
+        uint256 timestamp,
+        uint256 betAmount,
+        uint256 winAmount,
+        uint8[REELS][ROWS] memory symbols,
+        string memory userSeed
+    ) {
+        if (index >= playerSpinHistory[player].length) {
+            revert InvalidIndex(index, playerSpinHistory[player].length > 0 ? playerSpinHistory[player].length - 1 : 0);
+        }
+        
+        SpinResult memory result = playerSpinHistory[player][index];
+        return (
+            result.timestamp,
+            result.betAmount,
+            result.winAmount,
+            result.symbols,
+            result.userSeed
+        );
+    }
+    
+    /**
+     * @dev Get multiple spin results for a player (paginated)
+     * @param player The player address
+     * @param startIndex The starting index
+     * @param count The number of results to return
+     * @return An array of SpinResult structs
+     */
+    function getPlayerSpinResults(
+        address player, 
+        uint256 startIndex, 
+        uint256 count
+    ) external view returns (
+        SpinResult[] memory
+    ) {
+        uint256 historyLength = playerSpinHistory[player].length;
+        
+        // Check if startIndex is valid
+        if (startIndex >= historyLength) {
+            revert InvalidIndex(startIndex, historyLength > 0 ? historyLength - 1 : 0);
+        }
+        
+        // Determine how many results we can actually return
+        uint256 resultCount = count;
+        if (startIndex + resultCount > historyLength) {
+            resultCount = historyLength - startIndex;
+        }
+        
+        // Create result array
+        SpinResult[] memory results = new SpinResult[](resultCount);
+        
+        // Fill result array
+        for (uint256 i = 0; i < resultCount; i++) {
+            results[i] = playerSpinHistory[player][startIndex + i];
+        }
+        
+        return results;
+    }
+    
+    /**
+     * @dev Set the maximum number of spin results to store per player
+     * @param maxHistory The maximum number of spin results (0 = unlimited)
+     */
+    function setMaxHistoryPerPlayer(uint256 maxHistory) external onlyOwner {
+        uint256 oldValue = maxHistoryPerPlayer;
+        maxHistoryPerPlayer = maxHistory;
+        emit MaxHistoryUpdated(oldValue, maxHistory);
     }
 
     /**
