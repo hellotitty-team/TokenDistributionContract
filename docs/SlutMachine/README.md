@@ -18,6 +18,30 @@ SlutMachine is a digital slot machine that runs on blockchain technology. Think 
    - Bell
    - Seven (rarest, highest payout)
 
+   **Symbol Weights and Probabilities:**
+   
+   | Symbol ID | Name   | Weight | Probability  | Payout |
+   |-----------|--------|--------|--------------|--------|
+   | 0         | Cherry | 40     | 40% (40/100) | 1.1x   |
+   | 1         | Lemon  | 30     | 30% (30/100) | 1.2x   |
+   | 2         | Orange | 15     | 15% (15/100) | 2.5x   |
+   | 3         | Grape  | 10     | 10% (10/100) | 5x     |
+   | 4         | Bell   | 4      | 4% (4/100)   | 10x    |
+   | 5         | Seven  | 1      | 1% (1/100)   | 50x    |
+   
+   **How Weights Work:**
+   - The total weight is the sum of all symbol weights (40+30+15+10+4+1 = 100)
+   - Each symbol's probability = its weight / total weight
+   - Higher weight means higher probability of appearing
+   - More common symbols have lower payouts
+   - Rare symbols (lower weights) have higher payouts
+   
+   **Impact on Gameplay:**
+   - The weight system creates a balanced risk/reward system
+   - Players frequently see common symbols (Cherry/Lemon) but with small payouts
+   - Rare symbols like Seven appear infrequently but offer substantial payouts
+   - This creates exciting moments of anticipation for players
+
 3. **Placing Bets**: Players bet with digital tokens. There's a minimum bet amount to play and a maximum bet limit.
 
 4. **Spinning**: When you spin, the machine randomly selects symbols for each position on the 3x3 grid.
