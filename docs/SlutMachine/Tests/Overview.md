@@ -42,7 +42,7 @@ Edge case tests deliberately push the contract to its limits to ensure it handle
 ### Overall Test Coverage
 
 - **Total Test Files**: 2
-- **Total Test Scenarios**: 50+
+- **Total Test Scenarios**: 70
 - **Coverage Areas**: Deployment, Configuration, Gameplay, Security, Administration
 - **Test Types**: Unit tests, Integration tests, Statistical tests
 
