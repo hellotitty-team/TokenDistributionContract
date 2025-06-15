@@ -50,7 +50,7 @@ SlotMachine.sol (Main contract)
 - Multiple paylines
 
 **Symbols & Payouts:**
-- Cherry, Lemon, Orange, Plum, Bell, Bar, Seven, Jackpot
+- Cherry, Lemon, Orange, Grape, Bell, Bar, Seven, Jackpot
 - Different payout multipliers (1x to 1000x)
 - Progressive jackpot possibility
 

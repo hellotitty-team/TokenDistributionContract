@@ -40,7 +40,7 @@ contract SlutMachine is Ownable, ReentrancyGuard {
     uint256 public totalBetAmount;
 
     // Symbol configuration - packed into a single array for gas optimization
-    // [0] = Cherry, [1] = Lemon, [2] = Orange, [3] = Plum, [4] = Bell, [5] = Seven
+    // [0] = Cherry, [1] = Lemon, [2] = Orange, [3] = Grape, [4] = Bell, [5] = Seven
     uint16[NUM_SYMBOLS] public symbolWeights;
     uint16[NUM_SYMBOLS] public symbolPayouts; // Multipliers (in basis points - 100 = 1x)
 
@@ -123,7 +123,7 @@ contract SlutMachine is Ownable, ReentrancyGuard {
         symbolWeights[0] = 40;  // Cherry - 40% chance
         symbolWeights[1] = 30;  // Lemon - 30% chance
         symbolWeights[2] = 15;  // Orange - 15% chance
-        symbolWeights[3] = 10;  // Plum - 10% chance
+        symbolWeights[3] = 10;  // Grape - 10% chance
         symbolWeights[4] = 4;   // Bell - 4% chance
         symbolWeights[5] = 1;   // Seven - 1% chance
 
@@ -131,7 +131,7 @@ contract SlutMachine is Ownable, ReentrancyGuard {
         symbolPayouts[0] = 110;   // Cherry - 1.1x
         symbolPayouts[1] = 120;   // Lemon - 1.2x
         symbolPayouts[2] = 250;   // Orange - 2.5x
-        symbolPayouts[3] = 500;   // Plum - 5x
+        symbolPayouts[3] = 500;   // Grape - 5x
         symbolPayouts[4] = 1000;  // Bell - 10x
         symbolPayouts[5] = 5000;  // Seven - 50x
 
@@ -139,7 +139,7 @@ contract SlutMachine is Ownable, ReentrancyGuard {
         symbolNames[0] = "Cherry";
         symbolNames[1] = "Lemon";
         symbolNames[2] = "Orange";
-        symbolNames[3] = "Plum";
+        symbolNames[3] = "Grape";
         symbolNames[4] = "Bell";
         symbolNames[5] = "Seven";
         
