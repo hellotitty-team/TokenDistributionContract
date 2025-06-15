@@ -8,10 +8,10 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
- * @title SlotMachine
+ * @title SlutMachine
  * @dev A simple 3x3 slot machine contract that works with ERC20 tokens
  */
-contract SlotMachine is Ownable, ReentrancyGuard {
+contract SlutMachine is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // Constants
