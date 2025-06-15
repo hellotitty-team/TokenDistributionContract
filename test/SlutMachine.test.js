@@ -513,6 +513,80 @@ describe("SlutMachine Contract", function () {
       ).to.be.revertedWithCustomError(slutMachine, "InvalidIndex");
     });
   });
+
+  describe("Pausable Functionality", function () {
+    const BET_AMOUNT = ethers.parseEther("10");
+    
+    it("Should allow owner to pause the game", async function () {
+      // Initially game should be unpaused
+      expect(await slutMachine.paused()).to.equal(false);
+      
+      // Pause the game
+      await expect(slutMachine.pause())
+        .to.emit(slutMachine, "GamePaused")
+        .withArgs(owner.address);
+      
+      // Game should now be paused
+      expect(await slutMachine.paused()).to.equal(true);
+    });
+    
+    it("Should allow owner to unpause the game", async function () {
+      // First pause the game
+      await slutMachine.pause();
+      expect(await slutMachine.paused()).to.equal(true);
+      
+      // Then unpause it
+      await expect(slutMachine.unpause())
+        .to.emit(slutMachine, "GameUnpaused")
+        .withArgs(owner.address);
+      
+      // Game should now be unpaused
+      expect(await slutMachine.paused()).to.equal(false);
+    });
+    
+    it("Should revert spin when game is paused", async function () {
+      // Pause the game
+      await slutMachine.pause();
+      
+      // Approve token spending
+      await gameToken.connect(player1).approve(slutMachine.target, BET_AMOUNT);
+      
+      // Try to spin while paused
+      await expect(
+        slutMachine.connect(player1).spin(BET_AMOUNT, USER_SEED)
+      ).to.be.revertedWithCustomError(slutMachine, "EnforcedPause");
+    });
+    
+    it("Should allow spinning when game is unpaused", async function () {
+      // First pause the game
+      await slutMachine.pause();
+      
+      // Then unpause it
+      await slutMachine.unpause();
+      
+      // Should be able to spin now
+      await spinWithApproval(player1, BET_AMOUNT, USER_SEED);
+      
+      // Verify spin was successful
+      expect(await slutMachine.playerSpins(player1.address)).to.be.gt(0);
+    });
+    
+    it("Should revert when non-owner tries to pause", async function () {
+      await expect(
+        slutMachine.connect(player1).pause()
+      ).to.be.revertedWithCustomError(slutMachine, "OwnableUnauthorizedAccount");
+    });
+    
+    it("Should revert when non-owner tries to unpause", async function () {
+      // First pause the game as owner
+      await slutMachine.pause();
+      
+      // Try to unpause as non-owner
+      await expect(
+        slutMachine.connect(player1).unpause()
+      ).to.be.revertedWithCustomError(slutMachine, "OwnableUnauthorizedAccount");
+    });
+  });
 });
 
 // Mock ERC20 Test
