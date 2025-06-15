@@ -742,9 +742,17 @@ describe("SlutMachine Edge Cases", function () {
     });
 
     it("Should verify house edge is correctly applied to winnings", async function () {
-      // Configure for guaranteed win with known payout
-      const payout = 2000; // 20x
-      await slutMachine.configureSymbol(0, "TestHouseEdge", 100, payout);
+      // This test verifies that the house edge is correctly applied to winnings by:
+      // 1. Setting up a known symbol configuration 
+      // 2. Performing a spin
+      // 3. Checking the actual result grid for winning lines
+      // 4. Calculating the expected payout based on winning combinations
+      // 5. Verifying the house edge is correctly applied
+      
+      // Configure symbols: symbol 0 will always appear (weight=100%) with a 20x payout
+      const symbolPayout = 2000; // 20x payout in basis points
+      await slutMachine.configureSymbol(0, "TestHouseEdge", 100, symbolPayout);
+      // All other symbols have 0 weight, so they won't appear in results
       for (let i = 1; i < SYMBOLS; i++) {
         await slutMachine.configureSymbol(i, `Symbol${i}`, 0, 100);
       }
@@ -756,27 +764,68 @@ describe("SlutMachine Edge Cases", function () {
       const tx = await spinWithApproval(player1, betAmount, USER_SEED);
       const receipt = await tx.wait();
       
-      // Get the win amount from the event
+      // Get the spin result from event
       const spinEvent = receipt.logs.find(log => 
         slutMachine.interface.parseLog(log)?.name === "Spin"
       );
       const parsedLog = slutMachine.interface.parseLog(spinEvent);
       const actualWinAmount = BigInt(parsedLog.args[2]);
+      const slotResult = parsedLog.args[3]; // 3x3 grid of symbols
       
-      // Calculate expected win amount
+      // IMPORTANT: The contract pays out for EACH winning line separately
+      // Calculate the win multiplier by checking each possible winning line:
+      // - 3 horizontal lines
+      // - 3 vertical lines
+      // - 2 diagonal lines
+      let calculatedMultiplier = 0;
+      
+      // Check horizontal lines (3 rows)
+      for (let row = 0; row < 3; row++) {
+        if (slotResult[row][0] == slotResult[row][1] && slotResult[row][1] == slotResult[row][2]) {
+          const symbolId = slotResult[row][0];
+          const symbolMultiplier = await slutMachine.symbolPayouts(symbolId);
+          calculatedMultiplier += Number(symbolMultiplier);
+        }
+      }
+      
+      // Check vertical lines (3 columns)
+      for (let col = 0; col < 3; col++) {
+        if (slotResult[0][col] == slotResult[1][col] && slotResult[1][col] == slotResult[2][col]) {
+          const symbolId = slotResult[0][col];
+          const symbolMultiplier = await slutMachine.symbolPayouts(symbolId);
+          calculatedMultiplier += Number(symbolMultiplier);
+        }
+      }
+      
+      // Check diagonal from top-left to bottom-right
+      if (slotResult[0][0] == slotResult[1][1] && slotResult[1][1] == slotResult[2][2]) {
+        const symbolId = slotResult[0][0];
+        const symbolMultiplier = await slutMachine.symbolPayouts(symbolId);
+        calculatedMultiplier += Number(symbolMultiplier);
+      }
+      
+      // Check diagonal from top-right to bottom-left
+      if (slotResult[0][2] == slotResult[1][1] && slotResult[1][1] == slotResult[2][0]) {
+        const symbolId = slotResult[0][2];
+        const symbolMultiplier = await slutMachine.symbolPayouts(symbolId);
+        calculatedMultiplier += Number(symbolMultiplier);
+      }
+      
+      // Calculate expected win amount exactly as the contract does:
+      // 1. First multiply bet by the raw multiplier and divide by 10000 (basis points)
+      // 2. Then apply house edge as a percentage reduction
       const betAmountBigInt = BigInt(betAmount);
-      const rawWinAmount = betAmountBigInt * BigInt(payout) / BigInt(10000);
-      // Make sure we convert all numbers to BigInt to avoid type errors
-      const expectedWinAmount = rawWinAmount * (BigInt(10000) - houseEdge) / BigInt(10000);
+      const rawWinAmount = (betAmountBigInt * BigInt(calculatedMultiplier)) / BigInt(10000);
+      const expectedWinAmount = (rawWinAmount * (BigInt(10000) - houseEdge)) / BigInt(10000);
       
-      // Verify the win amount matches expected after house edge (with tolerance)
-      const tolerance = BigInt(ethers.parseEther("15")); // Much larger tolerance
+      // Use a minimal tolerance of 1 wei to account for any potential rounding issues
+      const tolerance = BigInt(1);
       
       const difference = expectedWinAmount > actualWinAmount ? 
                         expectedWinAmount - actualWinAmount : 
                         actualWinAmount - expectedWinAmount;
       
-      expect(difference).to.be.lessThan(tolerance);
+      expect(difference).to.be.lessThanOrEqual(tolerance);
     });
   });
 }); 
