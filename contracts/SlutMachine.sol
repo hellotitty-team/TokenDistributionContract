@@ -88,6 +88,7 @@ contract SlutMachine is Ownable, ReentrancyGuard, Pausable {
     uint256 public minBet;              // Smallest bet allowed
     uint256 public maxBet;              // Largest bet allowed
     uint256 public houseEdgePercent;    // Casino's profit percentage (e.g., 100 = 1%)
+    uint256 public developerPercent; // Developer's percentage (e.g., 100 = 1%)
     uint256 public totalSpins;          // Total number of spins across all players
     uint256 public totalWinAmount;      // Total amount won by all players
     uint256 public totalBetAmount;      // Total amount bet by all players
@@ -113,9 +114,12 @@ contract SlutMachine is Ownable, ReentrancyGuard, Pausable {
     // A counter for each player to help with randomness
     mapping(address => uint256) public playerNonce;
 
+    // Developer address to receive profits
+    address public developer;
+
     // Events - these are like notifications that are emitted when certain actions happen
-    event SlotMachineDeployed(address owner, address token, uint256 minBet, uint256 maxBet, uint256 houseEdgePercent);
-    event ConfigUpdated(uint256 minBet, uint256 maxBet, uint256 houseEdgePercent);
+    event SlotMachineDeployed(address owner, address token, uint256 minBet, uint256 maxBet, uint256 houseEdgePercent, uint256 developerPercent, address developer);
+    event ConfigUpdated(uint256 minBet, uint256 maxBet, uint256 houseEdgePercent, uint256 developerPercent);
     event SymbolsConfigured(uint8 symbolId, string name, uint16 weight, uint16 payout);
     event Spin(
         address indexed player, 
@@ -129,6 +133,7 @@ contract SlutMachine is Ownable, ReentrancyGuard, Pausable {
     event MaxHistoryUpdated(uint256 oldValue, uint256 newValue);
     event GamePaused(address owner);
     event GameUnpaused(address owner);
+    event DeveloperUpdated(address oldDeveloper, address newDeveloper);
 
     // Error messages - these provide clear explanations when something goes wrong
     error InvalidBetAmount(uint256 provided, uint256 min, uint256 max);
@@ -148,37 +153,46 @@ contract SlutMachine is Ownable, ReentrancyGuard, Pausable {
      * - Sets which cryptocurrency token will be used for bets
      * - Establishes minimum and maximum bet amounts
      * - Sets the house edge (casino's profit percentage)
+     * - Sets the developer percentage
      * - Configures the default symbols, their probabilities, and payouts
      * 
      * @param tokenAddress The cryptocurrency token address players will use to bet
      * @param initialMinBet Smallest allowed bet amount
      * @param initialMaxBet Largest allowed bet amount
      * @param initialHouseEdgePercent Casino's profit percentage (100 = 1%)
+     * @param initialDeveloperPercent Developer's percentage (100 = 1%)
+     * @param developerAddress Address to receive developer profits
      */
     constructor(
         address tokenAddress,
         uint256 initialMinBet,
         uint256 initialMaxBet,
-        uint256 initialHouseEdgePercent
+        uint256 initialHouseEdgePercent,
+        uint256 initialDeveloperPercent,
+        address developerAddress
     ) Ownable(msg.sender) {
         // Check that all inputs are valid
         if (tokenAddress == address(0)) revert ZeroAddressNotAllowed();
+        if (developerAddress == address(0)) revert ZeroAddressNotAllowed();
         if (initialMinBet == 0) revert ZeroValueNotAllowed();
         if (initialMaxBet < initialMinBet) revert InvalidBetAmount(initialMaxBet, initialMinBet, type(uint256).max);
         if (initialHouseEdgePercent > 5000) revert InvalidPercentage(initialHouseEdgePercent, 5000); // Max 50%
+        if (initialDeveloperPercent > 5000) revert InvalidPercentage(initialDeveloperPercent, 5000); // Max 50%
 
         // Set up the initial game configuration
         gameToken = IERC20(tokenAddress);
         minBet = initialMinBet;
         maxBet = initialMaxBet;
         houseEdgePercent = initialHouseEdgePercent;
+        developerPercent = initialDeveloperPercent;
+        developer = developerAddress;
         maxHistoryPerPlayer = 0;  // Default to unlimited history
         
         // Set up the default symbols with their probabilities and payouts
         _configureDefaultSymbols();
         
         // Announce that the slot machine has been created
-        emit SlotMachineDeployed(msg.sender, tokenAddress, minBet, maxBet, houseEdgePercent);
+        emit SlotMachineDeployed(msg.sender, tokenAddress, minBet, maxBet, houseEdgePercent, developerPercent, developerAddress);
     }
 
     /**
@@ -232,7 +246,7 @@ contract SlutMachine is Ownable, ReentrancyGuard, Pausable {
      * 2. Tokens are taken from the player's wallet
      * 3. A random 3x3 grid of symbols is generated
      * 4. Winnings are calculated based on matching symbols
-     * 5. The house edge is applied to any winnings
+     * 5. The house edge and developer profit are applied to any winnings
      * 6. Winnings (if any) are sent back to the player
      * 7. The spin result is recorded in the player's history
      * 
@@ -267,11 +281,30 @@ contract SlutMachine is Ownable, ReentrancyGuard, Pausable {
         
         // Calculate how much the player won based on matching symbols
         uint256 winMultiplier = calculateWinMultiplier(result);
-        uint256 winAmount = betAmount * winMultiplier;
+        uint256 originalWinAmount = betAmount * winMultiplier;
+        uint256 winAmount = originalWinAmount;
         
-        // Apply the house edge (casino's profit) to any winnings
+        // Apply the house edge and developer profit to any winnings
         if (winAmount > 0) {
-            winAmount = (winAmount * houseEdgePercent) / 10000;
+            // Calculate total deduction percentage (house edge + developer profit)
+            uint256 totalFeePercent = houseEdgePercent + developerPercent;
+            
+            // Calculate developer's share
+            uint256 developerShare = (originalWinAmount * developerPercent) / 10000;
+            
+            // Calculate player's share after fees
+            winAmount = (originalWinAmount * totalFeePercent) / 10000;
+            
+            // Make sure the contract has enough tokens to pay out
+            uint256 contractBalance = gameToken.balanceOf(address(this));
+            if (originalWinAmount > contractBalance) {
+                revert InsufficientContractBalance(originalWinAmount, contractBalance);
+            }
+            
+            // Send the developer's share directly
+            if (developerShare > 0) {
+                gameToken.safeTransfer(developer, developerShare);
+            }
         }
         
         // Update game statistics
@@ -284,12 +317,6 @@ contract SlutMachine is Ownable, ReentrancyGuard, Pausable {
         if (winAmount > 0) {
             totalWinAmount += winAmount;
             playerWinAmount[msg.sender] += winAmount;
-            
-            // Make sure the contract has enough tokens to pay out
-            uint256 contractBalance = gameToken.balanceOf(address(this));
-            if (winAmount > contractBalance) {
-                revert InsufficientContractBalance(winAmount, contractBalance);
-            }
             
             // Send the winnings to the player
             gameToken.safeTransfer(msg.sender, winAmount);
@@ -613,28 +640,33 @@ contract SlutMachine is Ownable, ReentrancyGuard, Pausable {
      * - The minimum bet amount
      * - The maximum bet amount
      * - The house edge (casino's profit percentage)
+     * - The developer percentage
      * 
      * @param newMinBet Smallest allowed bet amount
      * @param newMaxBet Largest allowed bet amount
      * @param newHouseEdgePercent Casino's profit percentage (in hundredths, 100 = 1%)
+     * @param newDeveloperPercent Developer's percentage (in hundredths, 100 = 1%)
      */
     function updateGameConfig(
         uint256 newMinBet,
         uint256 newMaxBet,
-        uint256 newHouseEdgePercent
+        uint256 newHouseEdgePercent,
+        uint256 newDeveloperPercent
     ) external onlyOwner {
         // Make sure the new values are valid
         if (newMinBet == 0) revert ZeroValueNotAllowed();
         if (newMaxBet < newMinBet) revert InvalidBetAmount(newMaxBet, newMinBet, type(uint256).max);
         if (newHouseEdgePercent > 5000) revert InvalidPercentage(newHouseEdgePercent, 5000); // Max 50%
+        if (newDeveloperPercent > 5000) revert InvalidPercentage(newDeveloperPercent, 5000); // Max 50%
         
         // Update the game configuration
         minBet = newMinBet;
         maxBet = newMaxBet;
         houseEdgePercent = newHouseEdgePercent;
+        developerPercent = newDeveloperPercent;
         
         // Announce the new configuration
-        emit ConfigUpdated(minBet, maxBet, houseEdgePercent);
+        emit ConfigUpdated(minBet, maxBet, houseEdgePercent, developerPercent);
     }
     
     /**
@@ -731,6 +763,8 @@ contract SlutMachine is Ownable, ReentrancyGuard, Pausable {
      * @return minBetAmount Smallest allowed bet
      * @return maxBetAmount Largest allowed bet
      * @return edge Casino's profit percentage
+     * @return devProfit Developer's percentage
+     * @return devAddress Developer's address
      * @return balance How many tokens the contract holds
      */
     function getGameConfig() external view returns (
@@ -738,6 +772,8 @@ contract SlutMachine is Ownable, ReentrancyGuard, Pausable {
         uint256 minBetAmount,
         uint256 maxBetAmount,
         uint256 edge,
+        uint256 devProfit,
+        address devAddress,
         uint256 balance
     ) {
         return (
@@ -745,6 +781,8 @@ contract SlutMachine is Ownable, ReentrancyGuard, Pausable {
             minBet,
             maxBet,
             houseEdgePercent,
+            developerPercent,
+            developer,
             gameToken.balanceOf(address(this))
         );
     }
@@ -789,5 +827,19 @@ contract SlutMachine is Ownable, ReentrancyGuard, Pausable {
     function unpause() external onlyOwner {
         _unpause();
         emit GameUnpaused(msg.sender);
+    }
+
+    /**
+     * @dev Updates the developer address that receives profit
+     * 
+     * @param newDeveloper The address of the new developer
+     */
+    function updateDeveloper(address newDeveloper) external onlyOwner {
+        if (newDeveloper == address(0)) revert ZeroAddressNotAllowed();
+        
+        address oldDeveloper = developer;
+        developer = newDeveloper;
+        
+        emit DeveloperUpdated(oldDeveloper, newDeveloper);
     }
 }
