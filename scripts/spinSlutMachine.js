@@ -22,19 +22,20 @@ async function main() {
     const slutMachineABI = require("../artifacts/contracts/SlutMachine.sol/SlutMachine.json").abi;
     const slutMachine = new ethers.Contract(SLUT_MACHINE_CONTRACT_ADDRESS, slutMachineABI, signer);
     
-    // Get game configuration
+    // Get game configuration - config is returned as a tuple, not an object with named properties
     const config = await slutMachine.getGameConfig();
     console.log("\nSlut Machine Configuration:");
-    console.log(`Game Token: ${config.token}`);
-    console.log(`Min Bet: ${ethers.formatEther(config.minBetAmount.toString())} tokens`);
-    console.log(`Max Bet: ${ethers.formatEther(config.maxBetAmount.toString())} tokens`);
-    console.log(`House Edge: ${config.edge}%`);
-    console.log(`Developer Profit: ${config.devProfit}%`);
-    console.log(`Contract Balance: ${ethers.formatEther(config.balance.toString())} tokens`);
+    console.log(`Game Token: ${config[0]}`); // token
+    console.log(`Min Bet: ${ethers.formatEther(config[1].toString())} tokens`); // minBetAmount
+    console.log(`Max Bet: ${ethers.formatEther(config[2].toString())} tokens`); // maxBetAmount
+    console.log(`House Edge: ${config[3]}%`); // edge
+    console.log(`Developer Profit: ${config[4]}%`); // devProfit
+    console.log(`Developer Address: ${config[5]}`); // devAddress
+    console.log(`Contract Balance: ${ethers.formatEther(config[6].toString())} tokens`); // balance
     
     // Get the game token to approve it
     const gameToken = new ethers.Contract(
-      config.token,
+      config[0], // token address is the first item in the config tuple
       ["function approve(address spender, uint256 amount) external returns (bool)",
        "function balanceOf(address account) external view returns (uint256)"],
       signer
@@ -45,7 +46,7 @@ async function main() {
     console.log(`\nYour token balance: ${ethers.formatEther(userBalance)}`);
     
     // Set bet amount (using minimum bet for safety)
-    const betAmount = config.minBetAmount;
+    const betAmount = config[1]; // minBetAmount
     
     // Generate a random seed for the spin
     const userSeed = `seed-${Math.floor(Math.random() * 1000000)}`;
@@ -67,10 +68,18 @@ async function main() {
     const receipt = await spinTx.wait();
     
     // Find the Spin event in the transaction logs
-    const spinEvent = receipt.events.find(e => e.event === "Spin");
+    const spinEvent = receipt.logs.find(log => {
+      try {
+        const parsed = slutMachine.interface.parseLog(log);
+        return parsed?.name === "Spin";
+      } catch (e) {
+        return false;
+      }
+    });
     
     if (spinEvent) {
-      const { player, betAmount, winAmount, result, userSeed } = spinEvent.args;
+      const parsedEvent = slutMachine.interface.parseLog(spinEvent);
+      const { player, betAmount, winAmount, result, userSeed } = parsedEvent.args;
       
       console.log("\n🎰 Spin Result 🎰");
       console.log(`Player: ${player}`);
@@ -95,7 +104,7 @@ async function main() {
         console.log(rowStr);
       }
       
-      if (winAmount.gt(0)) {
+      if (winAmount > 0) {
         console.log("\n🎉 Congratulations! You won! 🎉");
       } else {
         console.log("\nBetter luck next time!");
