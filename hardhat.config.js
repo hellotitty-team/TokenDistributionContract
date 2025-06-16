@@ -22,6 +22,11 @@ module.exports = {
       url: "http://127.0.0.1:8545",
       chainId: 1337
     },
+    sepolia: {
+      url: "https://ethereum-sepolia-rpc.publicnode.com",
+      chainId: 11155111,
+      accounts: PRIVATE_KEY ? [PRIVATE_KEY] : []
+    },
     ronin: {
       url: "https://api.roninchain.com/rpc",
       chainId: 2020,
