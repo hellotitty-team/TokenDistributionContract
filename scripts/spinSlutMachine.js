@@ -74,7 +74,11 @@ async function main() {
     
     // Spin the slot machine
     console.log("\nSpinning the SlutMachine...");
-    const spinTx = await slutMachine.spin(betAmount, userSeed);
+    // Apply the estimated gas parameters to the transaction
+    const spinTx = await slutMachine.spin(betAmount, userSeed, {
+      gasLimit: gasEstimate,
+      gasPrice: gasPrice.gasPrice
+    });
     
     // Wait for the transaction to be mined
     console.log("Waiting for transaction confirmation...");
