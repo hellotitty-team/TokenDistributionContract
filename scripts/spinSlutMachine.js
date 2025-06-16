@@ -59,6 +59,19 @@ async function main() {
     await approveTx.wait();
     console.log("Tokens approved successfully");
     
+    // Estimate gas for the spin transaction
+    console.log("\nEstimating gas for spin transaction...");
+    const gasEstimate = await slutMachine.spin.estimateGas(betAmount, userSeed);
+    const gasPrice = await ethers.provider.getFeeData();
+    const gasCost = gasEstimate * gasPrice.gasPrice;
+    
+    console.log(`Estimated gas units: ${gasEstimate.toString()}`);
+    console.log(`Gas price: ${ethers.formatUnits(gasPrice.gasPrice, 'gwei')} gwei`);
+    console.log(`Estimated gas cost: ${ethers.formatEther(gasCost)} ETH`);
+    
+    // Ask for confirmation before proceeding
+    console.log("\nProceeding with the spin transaction...");
+    
     // Spin the slot machine
     console.log("\nSpinning the SlutMachine...");
     const spinTx = await slutMachine.spin(betAmount, userSeed);
