@@ -26,11 +26,11 @@ async function main() {
     const config = await slutMachine.getGameConfig();
     console.log("\nSlut Machine Configuration:");
     console.log(`Game Token: ${config.token}`);
-    console.log(`Min Bet: ${ethers.utils.formatEther(config.minBetAmount)} tokens`);
-    console.log(`Max Bet: ${ethers.utils.formatEther(config.maxBetAmount)} tokens`);
-    console.log(`House Edge: ${config.edge / 100}%`);
-    console.log(`Developer Profit: ${config.devProfit / 100}%`);
-    console.log(`Contract Balance: ${ethers.utils.formatEther(config.balance)} tokens`);
+    console.log(`Min Bet: ${ethers.formatEther(config.minBetAmount.toString())} tokens`);
+    console.log(`Max Bet: ${ethers.formatEther(config.maxBetAmount.toString())} tokens`);
+    console.log(`House Edge: ${config.edge}%`);
+    console.log(`Developer Profit: ${config.devProfit}%`);
+    console.log(`Contract Balance: ${ethers.formatEther(config.balance.toString())} tokens`);
     
     // Get the game token to approve it
     const gameToken = new ethers.Contract(
@@ -42,7 +42,7 @@ async function main() {
     
     // Check user balance
     const userBalance = await gameToken.balanceOf(signer.address);
-    console.log(`\nYour token balance: ${ethers.utils.formatEther(userBalance)}`);
+    console.log(`\nYour token balance: ${ethers.formatEther(userBalance)}`);
     
     // Set bet amount (using minimum bet for safety)
     const betAmount = config.minBetAmount;
@@ -50,7 +50,7 @@ async function main() {
     // Generate a random seed for the spin
     const userSeed = `seed-${Math.floor(Math.random() * 1000000)}`;
     
-    console.log(`\nPreparing to spin with bet amount: ${ethers.utils.formatEther(betAmount)} tokens`);
+    console.log(`\nPreparing to spin with bet amount: ${ethers.formatEther(betAmount)} tokens`);
     
     // Approve tokens for the contract to use
     console.log("Approving tokens...");
@@ -74,8 +74,8 @@ async function main() {
       
       console.log("\n🎰 Spin Result 🎰");
       console.log(`Player: ${player}`);
-      console.log(`Bet Amount: ${ethers.utils.formatEther(betAmount)} tokens`);
-      console.log(`Win Amount: ${ethers.utils.formatEther(winAmount)} tokens`);
+      console.log(`Bet Amount: ${ethers.formatEther(betAmount)} tokens`);
+      console.log(`Win Amount: ${ethers.formatEther(winAmount)} tokens`);
       
       // Display the 3x3 grid of symbols
       console.log("\nSymbols Grid:");
