@@ -267,11 +267,11 @@ contract SlutMachine is Ownable, ReentrancyGuard, Pausable {
         
         // Calculate how much the player won based on matching symbols
         uint256 winMultiplier = calculateWinMultiplier(result);
-        uint256 winAmount = (betAmount * winMultiplier) / 10000;
+        uint256 winAmount = betAmount * winMultiplier;
         
         // Apply the house edge (casino's profit) to any winnings
         if (winAmount > 0) {
-            winAmount = (winAmount * (10000 - houseEdgePercent)) / 10000;
+            winAmount = (winAmount * houseEdgePercent) / 10000;
         }
         
         // Update game statistics
